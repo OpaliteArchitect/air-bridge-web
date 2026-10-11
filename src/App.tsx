@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -19,57 +19,95 @@ import {
   FileArchive,
   Lock,
   Wifi,
+  Loader2,
 } from "lucide-react";
 
 interface SharedFile {
   id: string;
   name: string;
   size: string;
-  type: "document" | "image" | "video" | "audio" | "archive";
+  type?: "document" | "image" | "video" | "audio" | "archive";
 }
 
-const MOCK_FILES: SharedFile[] = [
-  {
-    id: "1",
-    name: "Mathematics_Grade_10_Notes.pdf",
-    size: "14.2 MB",
-    type: "document",
-  },
-  { id: "2", name: "Physics_Lecture_Ch4.mp4", size: "128.5 MB", type: "video" },
-  {
-    id: "3",
-    name: "Science_Fair_Guidelines.docx",
-    size: "512 KB",
-    type: "document",
-  },
-  { id: "4", name: "Map_Of_Local_Region.png", size: "3.1 MB", type: "image" },
-  {
-    id: "5",
-    name: "English_Listening_Practice.mp3",
-    size: "15.8 MB",
-    type: "audio",
-  },
-  {
-    id: "6",
-    name: "Past_Exam_Papers_Bundle.zip",
-    size: "45.0 MB",
-    type: "archive",
-  },
-];
+// Helper to infer file type from extension for icon rendering
+const getFileType = (name: string): NonNullable<SharedFile["type"]> => {
+  const ext = name.split(".").pop()?.toLowerCase() || "";
+  if (["pdf", "docx", "doc", "txt", "xlsx", "xls"].includes(ext))
+    return "document";
+  if (["png", "jpg", "jpeg", "gif", "webp"].includes(ext)) return "image";
+  if (["mp4", "mov", "avi", "mkv"].includes(ext)) return "video";
+  if (["mp3", "wav", "aac", "flac"].includes(ext)) return "audio";
+  if (["zip", "rar", "7z", "tar", "gz"].includes(ext)) return "archive";
+  return "document";
+};
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [isLoadingAuth, setIsLoadingAuth] = useState<boolean>(false);
+  const [isLoadingFiles, setIsLoadingFiles] = useState<boolean>(true);
   const [pin, setPin] = useState<string>("");
-  const [error, setError] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string>("");
+  const [files, setFiles] = useState<SharedFile[]>([]);
 
-  const handleLogin = (e: React.FormEvent) => {
+  // Check active session / fetch files on mount
+  useEffect(() => {
+    async function fetchFiles() {
+      try {
+        const res = await fetch("/api/files", {
+          credentials: "include",
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setFiles(data);
+          setIsAuthenticated(true);
+        } else if (res.status === 401) {
+          setIsAuthenticated(false);
+        }
+      } catch (err) {
+        console.error("Failed to fetch files:", err);
+      } finally {
+        setIsLoadingFiles(false);
+      }
+    }
+
+    fetchFiles();
+  }, []);
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Mock check: any 4-digit PIN or "1234" unlocks it for demo purposes
-    if (pin.length >= 4) {
-      setIsAuthenticated(true);
-      setError(false);
-    } else {
-      setError(true);
+    if (!pin) return;
+
+    setIsLoadingAuth(true);
+    setErrorMessage("");
+
+    try {
+      const res = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin }),
+        credentials: "include",
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setIsAuthenticated(true);
+        // Fetch files immediately after successful auth
+        const filesRes = await fetch("/api/files", {
+          credentials: "include",
+        });
+        if (filesRes.ok) {
+          const filesData = await filesRes.json();
+          setFiles(filesData);
+        }
+      } else {
+        setErrorMessage("Invalid PIN. Please try again.");
+      }
+    } catch (err) {
+      console.error("Authentication error:", err);
+      setErrorMessage("Connection error. Please check your network.");
+    } finally {
+      setIsLoadingAuth(false);
     }
   };
 
@@ -90,10 +128,19 @@ export default function App() {
     }
   };
 
-  const handleDownload = (fileName: string) => {
-    // In production, this points to the Ktor HTTP server download endpoint e.g., window.location.href = `/api/download/${id}`
-    alert(`Initiating download for: ${fileName}`);
+  const handleDownload = (id: string) => {
+    const a = document.createElement("a");
+    a.href = `/api/download/${id}`;
+    a.click();
   };
+
+  if (isLoadingFiles) {
+    return (
+      <main className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
+        <Loader2 className="size-8 animate-spin text-primary" />
+      </main>
+    );
+  }
 
   // --- PIN GATEWAY SCREEN ---
   if (!isAuthenticated) {
@@ -132,13 +179,20 @@ export default function App() {
                     className="text-center text-lg tracking-widest"
                     autoFocus
                   />
-                  {error && (
+                  {errorMessage && (
                     <p className="text-xs text-destructive text-center">
-                      Please enter a valid PIN to continue.
+                      {errorMessage}
                     </p>
                   )}
                 </div>
-                <Button type="submit" className="w-full">
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={isLoadingAuth}
+                >
+                  {isLoadingAuth ? (
+                    <Loader2 className="size-4 animate-spin mr-2" />
+                  ) : null}
                   Access Files
                 </Button>
               </form>
@@ -168,7 +222,7 @@ export default function App() {
             </div>
           </div>
           <Badge variant="outline" className="text-xs font-normal">
-            {MOCK_FILES.length} files available
+            {files.length} files available
           </Badge>
         </div>
       </header>
@@ -181,35 +235,44 @@ export default function App() {
           </h2>
 
           <div className="bg-white dark:bg-slate-900 rounded-xl border shadow-xs divide-y divide-slate-100 dark:divide-slate-800 overflow-hidden">
-            {MOCK_FILES.map((file) => (
-              <div
-                key={file.id}
-                onClick={() => handleDownload(file.name)}
-                className="flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer group"
-              >
-                <div className="flex items-center gap-3.5 min-w-0">
-                  <div className="p-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 shrink-0">
-                    {getFileIcon(file.type)}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-medium text-sm truncate group-hover:text-primary transition-colors">
-                      {file.name}
-                    </p>
-                    <span className="text-xs text-muted-foreground">
-                      {file.size}
-                    </span>
-                  </div>
-                </div>
-
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="shrink-0 ml-2 text-muted-foreground group-hover:text-primary"
-                >
-                  <Download className="size-4" />
-                </Button>
+            {files.length === 0 ? (
+              <div className="p-8 text-center text-sm text-muted-foreground">
+                No files available on this host.
               </div>
-            ))}
+            ) : (
+              files.map((file) => {
+                const fileType = getFileType(file.name);
+                return (
+                  <div
+                    key={file.id}
+                    onClick={() => handleDownload(file.id)}
+                    className="flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer group"
+                  >
+                    <div className="flex items-center gap-3.5 min-w-0">
+                      <div className="p-2.5 rounded-lg bg-slate-100 dark:bg-slate-800 shrink-0">
+                        {getFileIcon(fileType)}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-medium text-sm truncate group-hover:text-primary transition-colors">
+                          {file.name}
+                        </p>
+                        <span className="text-xs text-muted-foreground">
+                          {file.size}
+                        </span>
+                      </div>
+                    </div>
+
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="shrink-0 ml-2 text-muted-foreground group-hover:text-primary"
+                    >
+                      <Download className="size-4" />
+                    </Button>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       </main>
