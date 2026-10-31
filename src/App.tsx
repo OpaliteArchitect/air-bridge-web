@@ -36,7 +36,7 @@ export default function App() {
     fetchFiles();
   }, []);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.SubmitEvent) => {
     e.preventDefault();
     if (!pin) return;
 
