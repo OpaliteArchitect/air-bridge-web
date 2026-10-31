@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { Loader2 } from "lucide-react";
 import type { SharedFile } from "@/types/file";
 import { PinGateway } from "@/components/PinGateway";
 import { FileList } from "@/components/FileList";
@@ -7,7 +6,6 @@ import { FileList } from "@/components/FileList";
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState<boolean>(false);
-  const [isLoadingFiles, setIsLoadingFiles] = useState<boolean>(true);
   const [pin, setPin] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [files, setFiles] = useState<SharedFile[]>([]);
@@ -103,14 +101,6 @@ export default function App() {
       alert("Network error while downloading.");
     }
   };
-
-  if (isLoadingFiles) {
-    return (
-      <main className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
-        <Loader2 className="size-8 animate-spin text-primary" />
-      </main>
-    );
-  }
 
   if (!isAuthenticated) {
     return (
