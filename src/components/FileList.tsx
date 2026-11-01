@@ -7,7 +7,7 @@ import { getFileType } from "@/types/file";
 
 interface FileListProps {
   files: SharedFile[];
-  onDownload: (id: string) => void;
+  onDownload: (id: string, name: string) => void;
 }
 
 export function FileList({ files, onDownload }: FileListProps) {
@@ -32,7 +32,7 @@ export function FileList({ files, onDownload }: FileListProps) {
                 return (
                   <div
                     key={file.id}
-                    onClick={() => onDownload(file.id)}
+                    onClick={() => onDownload(file.id, file.name)}
                     className="flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer group"
                   >
                     <div className="flex items-center gap-3.5 min-w-0">

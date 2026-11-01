@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { Loader2 } from "lucide-react";
 import type { SharedFile } from "@/types/file";
 import { PinGateway } from "@/components/PinGateway";
 import { FileList } from "@/components/FileList";
@@ -7,36 +6,31 @@ import { FileList } from "@/components/FileList";
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState<boolean>(false);
-  const [isLoadingFiles, setIsLoadingFiles] = useState<boolean>(true);
   const [pin, setPin] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [files, setFiles] = useState<SharedFile[]>([]);
 
-  // Check active session / fetch files on mount
   useEffect(() => {
-    async function fetchFiles() {
+    if (!isAuthenticated) return;
+
+    const interval = setInterval(async () => {
       try {
-        const res = await fetch("/api/files", {
-          credentials: "include",
-        });
+        const res = await fetch("/api/files", { credentials: "include" });
         if (res.ok) {
           const data = await res.json();
           setFiles(data);
-          setIsAuthenticated(true);
         } else if (res.status === 401) {
           setIsAuthenticated(false);
         }
       } catch (err) {
-        console.error("Failed to fetch files:", err);
-      } finally {
-        setIsLoadingFiles(false);
+        console.error("Polling error:", err);
       }
-    }
+    }, 4000);
 
-    fetchFiles();
-  }, []);
+    return () => clearInterval(interval);
+  }, [isAuthenticated]);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.SubmitEvent) => {
     e.preventDefault();
     if (!pin) return;
 
@@ -74,19 +68,39 @@ export default function App() {
     }
   };
 
-  const handleDownload = (id: string) => {
-    const a = document.createElement("a");
-    a.href = `/api/download/${id}`;
-    a.click();
-  };
+  const handleDownload = async (id: string, name: string) => {
+    try {
+      const res = await fetch(`/api/download/${id}`, {
+        credentials: "include",
+      });
+      if (!res.ok) {
+        if (res.status === 404) {
+          alert("This file was removed by the host.");
+          // Refresh file list immediately to sync state
+          const filesRes = await fetch("/api/files", {
+            credentials: "include",
+          });
+          if (filesRes.ok) setFiles(await filesRes.json());
+        } else {
+          alert("Unable to download file.");
+        }
+        return;
+      }
 
-  if (isLoadingFiles) {
-    return (
-      <main className="min-h-screen bg-slate-50 dark:bg-slate-950 flex items-center justify-center">
-        <Loader2 className="size-8 animate-spin text-primary" />
-      </main>
-    );
-  }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Download failed:", err);
+      alert("Network error while downloading.");
+    }
+  };
 
   if (!isAuthenticated) {
     return (
